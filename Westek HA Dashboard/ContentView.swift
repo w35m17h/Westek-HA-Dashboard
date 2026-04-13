@@ -14,22 +14,29 @@ class MQTTManager: NSObject, ObservableObject, CocoaMQTTDelegate {
         super.init()
         let clientID = "WesTekDashboard-\(Int.random(in: 1000...9999))"
         mqtt = CocoaMQTT(clientID: clientID, host: mqttBroker, port: mqttPort)
+        mqtt.username = "mosquitto"
+        mqtt.password = "socius"
         mqtt.delegate = self
         _ = mqtt.connect()
     }
 
-    func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
+    nonisolated func mqtt(_ mqtt: CocoaMQTT, didConnectAck ack: CocoaMQTTConnAck) {
+        guard ack == .accept else { return }
         mqtt.subscribe("stat/sonoff/office/lamp/POWER")
         mqtt.subscribe("stat/sonoff/office/partylights/POWER")
+        // Query current state
+        mqtt.publish("cmnd/sonoff/office/lamp/POWER", withString: "")
+        mqtt.publish("cmnd/sonoff/office/partylights/POWER", withString: "")
     }
 
-    func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
+    nonisolated func mqtt(_ mqtt: CocoaMQTT, didReceiveMessage message: CocoaMQTTMessage, id: UInt16) {
         let payload = message.string ?? ""
+        let topic = message.topic
         DispatchQueue.main.async {
-            if message.topic == "stat/sonoff/office/lamp/POWER" {
+            if topic == "stat/sonoff/office/lamp/POWER" {
                 self.lampState = payload == "ON"
             }
-            if message.topic == "stat/sonoff/office/partylights/POWER" {
+            if topic == "stat/sonoff/office/partylights/POWER" {
                 self.partyState = payload == "ON"
             }
         }
@@ -40,13 +47,13 @@ class MQTTManager: NSObject, ObservableObject, CocoaMQTTDelegate {
     }
 
     // Required delegate stubs
-    func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {}
-    func mqtt(_ mqtt: CocoaMQTT, didPublishMessage message: CocoaMQTTMessage, id: UInt16) {}
-    func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
-    func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopics success: NSDictionary, failed: [String]) {}
-    func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopics topics: [String]) {}
-    func mqttDidPing(_ mqtt: CocoaMQTT) {}
-    func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
+    nonisolated func mqttDidDisconnect(_ mqtt: CocoaMQTT, withError err: Error?) {}
+    nonisolated func mqtt(_ mqtt: CocoaMQTT, didPublishMessage message: CocoaMQTTMessage, id: UInt16) {}
+    nonisolated func mqtt(_ mqtt: CocoaMQTT, didPublishAck id: UInt16) {}
+    nonisolated func mqtt(_ mqtt: CocoaMQTT, didSubscribeTopics success: NSDictionary, failed: [String]) {}
+    nonisolated func mqtt(_ mqtt: CocoaMQTT, didUnsubscribeTopics topics: [String]) {}
+    nonisolated func mqttDidPing(_ mqtt: CocoaMQTT) {}
+    nonisolated func mqttDidReceivePong(_ mqtt: CocoaMQTT) {}
 }
 
 struct ContentView: View {
@@ -63,33 +70,38 @@ struct ContentView: View {
             HStack {
                 Text("Lamp")
                 Spacer()
-                Toggle("", isOn: Binding(
-                    get: { mqttManager.lampState },
-                    set: { newValue in
-                        mqttManager.lampState = newValue
-                        mqttManager.toggle(topic: "cmnd/sonoff/office/lamp/POWER", state: newValue)
-                    }
-                ))
-                .labelsHidden()
+                Circle()
+                    .fill(mqttManager.lampState ? .green : .red)
+                    .frame(width: 12, height: 12)
+                    .shadow(color: mqttManager.lampState ? .green : .red, radius: 4)
             }
             .padding(.horizontal)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                let newValue = !mqttManager.lampState
+                mqttManager.lampState = newValue
+                mqttManager.toggle(topic: "cmnd/sonoff/office/lamp/power", state: newValue)
+            }
 
             HStack {
                 Text("Party Lights")
                 Spacer()
-                Toggle("", isOn: Binding(
-                    get: { mqttManager.partyState },
-                    set: { newValue in
-                        mqttManager.partyState = newValue
-                        mqttManager.toggle(topic: "cmnd/sonoff/office/partylights/POWER", state: newValue)
-                    }
-                ))
-                .labelsHidden()
+                Circle()
+                    .fill(mqttManager.partyState ? .green : .red)
+                    .frame(width: 12, height: 12)
+                    .shadow(color: mqttManager.partyState ? .green : .red, radius: 4)
             }
             .padding(.horizontal)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                let newValue = !mqttManager.partyState
+                mqttManager.partyState = newValue
+                mqttManager.toggle(topic: "cmnd/sonoff/office/partylights/power", state: newValue)
+            }
 
             Spacer()
         }
         .frame(width: 300, height: 200)
     }
 }
+

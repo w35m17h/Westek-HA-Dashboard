@@ -12,6 +12,11 @@ struct Westek_HA_DashboardApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onAppear {
+                    for window in NSApplication.shared.windows {
+                        window.level = .floating
+                    }
+                }
         }
     }
 }
